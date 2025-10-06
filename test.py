@@ -14,14 +14,14 @@ from torchvision import transforms
 from torchvision.utils import save_image
 from skimage.metrics import structural_similarity as compare_ssim
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+import SimpleITK as sitk
 # local
-from model import UNet2d, Unet3d, UNet2d_3, Unet3d_3, Unet3d_9
+from model import UNet2d, Unet3d
 import config1
 import dataset
 import utils
-import  train
-import SimpleITK as sitk
-import  re
+
+
 
 def test(cfg,unet):
     # set device
@@ -551,107 +551,6 @@ def test_9label_3d(cfg,unet_1mask,unet_3mask,unet):
 
 
     #print(f"loss:{loss_mean} psnr:{psnr_mean}-{psnr_std}   ssim:{ssim_mean}-{ssim_std}")
-def get_3mask_3d_result(cfg,unet_1mask,unet_3mask):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"device -> {device}")
-
-    test_dataloader = DataLoader(dataset.GetTestSet(data_root='E:\zjy\zjy\get_result3d_3mask', img_size=cfg.img_size),
-                                 batch_size=cfg.batch_size, shuffle=False, num_workers=0)
-    test_iterator = tqdm(test_dataloader)
-
-    # 保存每一轮的测试图片
-    test_epoch_root = r'E:\zjy\zjy\get_result3d_3mask\test_result'  # /epoch{epoch}"
-    if not os.path.exists(test_epoch_root):
-        os.makedirs(test_epoch_root)
-    with torch.no_grad():
-        for index, data in enumerate(test_iterator):
-            # load imgs
-            input_img = (data[0].squeeze()).to(device)  # [z,128,128]
-            gt_img = (data[1].squeeze()).to(device)  # [?,128,128]
-
-            input_name=data[2]
-            print(input_name)
-            patch_input = input_img.unsqueeze(0).unsqueeze(0)  # [1,1,?,128,128]
-            patch_gt = gt_img.unsqueeze(0).unsqueeze(0)
-
-            if patch_gt.max() != 0:
-                # 划分面部区域
-                input_mask = unet_1mask(patch_input)
-                input_mask[input_mask > 0.9] = 1
-                input_mask[input_mask <= 0.9] = 0
-                patch_input = input_mask * patch_input
-                # forward 前向传播
-                pred = unet_3mask(patch_input)
-            else:
-                pred=patch_gt.clone()
-            #保存结果
-            save_path = f'{test_epoch_root}/test_result_{input_name[0]}'
-            pred = utils.minmax(torch.argmax(pred, 1, keepdim=True))* 255
-            pred = pred.type(torch.int16)
-            # pred = pred.squeeze()
-            # patch_show_np = pred.cpu().numpy()
-            patch_show_2 = sitk.GetImageFromArray(pred)
-            sitk.WriteImage(patch_show_2, save_path)
-
-def get_3mask_2d_result(cfg,unet_1mask,unet_3mask):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"device -> {device}")
-
-    test_dataloader = DataLoader(dataset.GetTestSet(data_root='E:\zjy\zjy\get_result2d_3mask', img_size=cfg.img_size),
-                                 batch_size=cfg.batch_size, shuffle=False, num_workers=0)
-    test_iterator = tqdm(test_dataloader)
-
-    data_root = 'E:\zjy\zjy\get_result2d_3mask'
-    input_root = 'E:\zjy\zjy\____input_all\____input_interest'
-    # 保存每一轮的测试图片
-    test_epoch_root = r'E:\zjy\zjy\get_result2d_3mask\test_result'  # /epoch{epoch}"
-    if not os.path.exists(test_epoch_root):
-        os.makedirs(test_epoch_root)
-
-
-    with torch.no_grad():
-        for index, data in enumerate(test_iterator):
-            # load imgs
-            input_img = (data[0].squeeze()).to(device)
-            input_name=re.findall(r'\d+',data[2][0])
-            # input_origin_image_path=f"{input_root}\_{input_name[0]}_interest.nii.gz"#_1001_interest.nii.gz
-            print(input_name[0])
-            input_img = input_img.unsqueeze(0)
-            # gt_img = gt_img.unsqueeze(0)
-            slice_input = input_img.unsqueeze(0)
-            input_mask = unet_1mask(slice_input)
-            input_mask[input_mask > 0.9] = 1
-            input_mask[input_mask <= 0.9] = 0
-            slice_input = input_mask * slice_input
-
-            # forward 前向传播
-            pred = unet_3mask(slice_input)
-
-            #保存结果
-            save_path = f'{test_epoch_root}/_test_result_{input_name[0]}_slice_{input_name[2]}.dcm'
-            pred = utils.minmax(torch.argmax(pred,1,keepdim=True))*255
-            pred=pred.type(torch.int16)
-            # patch_show_np = pred.cpu().numpy()
-            patch_show_1 = sitk.GetImageFromArray(pred)
-            patch_show_2=sitk.Cast(patch_show_1,sitk.sitkInt16)
-            # sitk.WriteImage(patch_show_2, save_path)
-            # slice_image = sitk.GetImageFromArray(patch_show_np)
-            writer = sitk.ImageFileWriter()
-            writer.SetFileName(save_path)
-
-            # input_origin_image=sitk.ReadImage(input_origin_image_path)
-            # patch_show_2.SetSpacing(input_origin_image.GetSpacing())
-            # patch_show_2.SetOrigin(input_origin_image.GetOrigin())
-            # patch_show_2.SetDirection(input_origin_image.GetDirection())
-            # patch_show_2.SetMetaData("0028|0008",  str(sitk.GetArrayFromImage(input_origin_image).shape[0]))
-            # patch_show_2.SetMetaData("0020|0013", str(index+1))
-
-            # 获取图像的基础信息（如 spacing 和方向）
-            # 写入 DICOM 文件
-            writer.Execute(patch_show_2)
-            print(f"Saved {save_path}")
-
-
 
 
 if __name__ == '__main__':
